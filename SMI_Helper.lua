@@ -68,7 +68,7 @@ function main()
 	if not isSampLoaded() or not isSampfuncsLoaded() then return end
 	while not isSampAvailable() do wait(100) end
 	
-	autoupdate("https://github.com/acarrizo228/mm-helper/blob/master/update.json", '['..string.upper(thisScript().name)..']: ', "тут ссылка на ваш сайт/url вашего скрипта на форуме (если нет, оставьте как в json)")
+	autoupdate("https://github.com/acarrizo228/mm-helper/blob/master/update.json", '['..string.upper(thisScript().name)..']: ', "https://github.com/acarrizo228/mm-helper/blob/master/SMI_Helper.lua")
 	sampAddChatMessage('{046D63}[MM Helper]{FFFFFF} Скрипт подгружен в игру. Приятной игры!', -1)
 	
 	print("Подгружаем настройки скрипта")

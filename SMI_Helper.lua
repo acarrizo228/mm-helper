@@ -1,6 +1,7 @@
 script_name('MM-Helper')
 script_authors('Cesare Carrizo')
 script_description('Mass Media Helper.')
+script_version_number(1)
 script_version("0.0.1")
 script_properties("work-in-pause")
 
@@ -37,8 +38,8 @@ local org = 'Без работный'
 local porg = 'None'
 local rang = 'Гражданин'
 local rang_id = 0
-local regDialog = false
 ScriptUse = 3
+regDialog, UpdateNahuy = false, false
 
 local SET = {
  	settings = {
@@ -54,6 +55,7 @@ local SET = {
 local win_state = {}
 win_state['menu'] = imgui.ImBool(false)
 win_state['efir'] = imgui.ImBool(false)
+win_state['update'] = imgui.ImBool(false)
 local text_buffer = imgui.ImBuffer('', 20)
 
 local SeleList = {"Главное меню", "Предпочтения", "Тест "} -- список менюшек для блока "информация"
@@ -68,14 +70,13 @@ function main()
 	if not isSampLoaded() or not isSampfuncsLoaded() then return end
 	while not isSampAvailable() do wait(100) end
 	
-	autoupdate("https://github.com/acarrizo228/mm-helper/blob/master/update.json", '['..string.upper(thisScript().name)..']: ', "https://github.com/acarrizo228/mm-helper/blob/master/SMI_Helper.lua")
 	sampAddChatMessage('{046D63}[MM Helper]{FFFFFF} Скрипт подгружен в игру. Приятной игры!', -1)
 	
 	print("Подгружаем настройки скрипта")
 	files_add() -- загрузка файлов и подгрузка текстур
-	update() -- запуск обновлений
-	while not UpdateNahuy do wait(0) end -- пока не проверит обновления тормозим работу
 	load_settings()
+	
+	while not UpdateNahuy do wait(0) end
 	
 	repeat wait(10) until sampIsLocalPlayerSpawned()
 	
@@ -115,9 +116,11 @@ function main()
 end
 
 function cmd_mm() -- функция открытия основного меню скрипта
+	if not win_state['update'].v then
 		win_state['menu'].v = not win_state['menu'].v
 		
 		showSet = 1 -- сброс выбора в "информация"
+	end	
 end
 
 function cmd_time() -- функция открытия основного меню скрипта
@@ -213,6 +216,8 @@ function imgui.OnDrawFrame()
 	local btn_size2 = imgui.ImVec2(160, 0)
 	local btn_size3 = imgui.ImVec2(140, 0)
 	
+	imgui.ShowCursor = win_state['main'].v or win_state['update'].v
+	
 	if win_state['menu'].v then -- основное меню
 		imgui.SetNextWindowPos(imgui.ImVec2(sw/2, sh/2), imgui.Cond.FirstUseEver, imgui.ImVec2(0.5, 0.5))
 		imgui.SetNextWindowSize(imgui.ImVec2(600, 300), imgui.Cond.FirstUseEver)
@@ -288,6 +293,33 @@ function imgui.OnDrawFrame()
 		end
 		
         imgui.End()
+	end
+	
+	if win_state['update'].v then -- окно обновления скрипта
+		imgui.SetNextWindowPos(imgui.ImVec2(sw/2, sh/2), imgui.Cond.FirstUseEver, imgui.ImVec2(0.5, 0.5))
+        imgui.SetNextWindowSize(imgui.ImVec2(450, 200), imgui.Cond.FirstUseEver)
+        imgui.Begin(u8('Обновление'), nil, imgui.WindowFlags.NoResize)
+		imgui.Text(u8'Обнаружено обновление до версии: '..updatever)
+		imgui.Separator()
+		imgui.TextWrapped(u8("Для установки обновления необходимо подтверждение пользователя, разработчик настоятельно рекомендует принимать обновления ввиду того, что прошлые версии через определенное время отключаются и более не работают."))
+		if imgui.Button(u8'Скачать и установить обновление', btn_size) then
+			async_http_request('GET', 'https://raw.githubusercontent.com/acarrizo228/mm-helper/master/SMI_Helper.luac', nil,
+				function(response) -- вызовется при успешном выполнении и получении ответа
+				local f = assert(io.open(getWorkingDirectory() .. '/SMI_Helper.luac', 'wb'))
+				f:write(response.text)
+				f:close()
+				sampAddChatMessage("[MM-Helper]{FFFFFF} Обновление успешно, перезагружаем скрипт.", 0x046D63)
+				thisScript():reload()
+			end,
+			function(err) -- вызовется при ошибке, err - текст ошибки. эту функцию можно не указывать
+				print(err)
+				sampAddChatMessage("[MM-Helper]{FFFFFF} Произошла ошибка при обновлении, попробуйте позже.", 0x046D63)
+				win_state['update'].v = not win_state['update'].v
+				return
+			end)
+		end
+		if imgui.Button(u8'Закрыть', btn_size) then win_state['update'].v = not win_state['update'].v end
+		imgui.End()
 	end
 end	
 
@@ -485,58 +517,75 @@ function patch()
 end
 patch()
 
-function autoupdate(json_url, prefix, url)
-  local dlstatus = require('moonloader').download_status
-  local json = getWorkingDirectory() .. '\\'..thisScript().name..'-version.json'
-  if doesFileExist(json) then os.remove(json) end
-  downloadUrlToFile(json_url, json,
-    function(id, status, p1, p2)
-      if status == dlstatus.STATUSEX_ENDDOWNLOAD then
-        if doesFileExist(json) then
-          local f = io.open(json, 'r')
-          if f then
-            local info = decodeJson(f:read('*a'))
-            updatelink = info.updateurl
-            updateversion = info.latest
-            f:close()
-            os.remove(json)
-            if updateversion ~= thisScript().version then
-              lua_thread.create(function(prefix)
-                local dlstatus = require('moonloader').download_status
-                local color = -1
-                sampAddChatMessage((prefix..'Обнаружено обновление. Пытаюсь обновиться c '..thisScript().version..' на '..updateversion), color)
-                wait(250)
-                downloadUrlToFile(updatelink, thisScript().path,
-                  function(id3, status1, p13, p23)
-                    if status1 == dlstatus.STATUS_DOWNLOADINGDATA then
-                      print(string.format('Загружено %d из %d.', p13, p23))
-                    elseif status1 == dlstatus.STATUS_ENDDOWNLOADDATA then
-                      print('Загрузка обновления завершена.')
-                      sampAddChatMessage((prefix..'Обновление завершено!'), color)
-                      goupdatestatus = true
-                      lua_thread.create(function() wait(500) thisScript():reload() end)
-                    end
-                    if status1 == dlstatus.STATUSEX_ENDDOWNLOAD then
-                      if goupdatestatus == nil then
-                        sampAddChatMessage((prefix..'Обновление прошло неудачно. Запускаю устаревшую версию..'), color)
-                        update = false
-                      end
-                    end
-                  end
-                )
-                end, prefix
-              )
-            else
-              update = false
-              print('v'..thisScript().version..': Обновление не требуется.')
-            end
-          end
+function update() -- проверка обновлений
+	local zapros = https.request("https://raw.githubusercontent.com/acarrizo228/mm-helper/master/update.json")
+
+	if zapros ~= nil then
+		local info2 = decodeJson(zapros)
+
+		if info2.latest_number ~= nil and info2.latest ~= nil and info2.drop ~= nil then
+			updatever = info2.latest
+			version = tonumber(info2.latest_number)
+			dropver = tonumber(info2.drop)
+			
+			print("[Update] Начинаем контроль версий")
+			
+			if tonumber(thisScript().version_num) <= dropver then
+				print("[Update] Used non supported version: "..thisScript().version_num..", actual: "..version)
+				sampAddChatMessage("[MM-Helper]{FFFFFF} Ваша версия более не поддерживается разработчиком, работа скрипта невозможна.", 0x046D63)
+				reloadScript = true
+				thisScript():unload()
+			elseif version > tonumber(thisScript().version_num) then
+				print("[Update] Обнаружено обновление")
+				sampAddChatMessage("[MM-Helper]{FFFFFF} Обнаружено обновление до версии "..updatever..".", 0x046D63)
+				win_state['update'].v = true
+				UpdateNahuy = true
+			else
+				print("[Update] Новых обновлений нет, контроль версий пройден")
+				if checkupd then
+					sampAddChatMessage("[MM-Helper]{FFFFFF} У вас стоит актуальная версия скрипта: "..thisScript().version..".", 0x046D63)
+					sampAddChatMessage("[MM-Helper]{FFFFFF} Необходимости обновлять скрипт - нет, приятного пользования.", 0x046D63)
+					checkupd = false
+				end
+				UpdateNahuy = true
+			end
+		else
+			sampAddChatMessage("[MM-Helper]{FFFFFF} Ошибка при получении информации об обновлении.", 0x046D63)
+			print("[Update] JSON file read error")
+			UpdateNahuy = true
+		end
+	else
+		sampAddChatMessage("[MM-Helper]{FFFFFF} Не удалось проверить наличие обновлений, попробуйте позже.", 0x046D63)
+		UpdateNahuy = true
+	end
+end
+
+function async_http_request(method, url, args, resolve, reject) -- асинхронные запросы, опасная штука местами, ибо при определенном использовании игра может улететь в аут ;D
+	local request_lane = lanes.gen('*', {package = {path = package.path, cpath = package.cpath}}, function()
+		local requests = require 'requests'
+        local ok, result = pcall(requests.request, method, url, args)
+        if ok then
+            result.json, result.xml = nil, nil -- cannot be passed through a lane
+            return true, result
         else
-          print('v'..thisScript().version..': Не могу проверить обновление. Смиритесь или проверьте самостоятельно на '..url)
-          update = false
+            return false, result -- return error
         end
-      end
-    end
-  )
-  while update ~= false do wait(100) end
+    end)
+    if not reject then reject = function() end end
+    lua_thread.create(function()
+        local lh = request_lane()
+        while true do
+            local status = lh.status
+            if status == 'done' then
+                local ok, result = lh[1], lh[2]
+                if ok then resolve(result) else reject(result) end
+                return
+            elseif status == 'error' then
+                return reject(lh[1])
+            elseif status == 'killed' or status == 'cancelled' then
+                return reject(status)
+            end
+            wait(0)
+        end
+    end)
 end
